@@ -12,17 +12,29 @@ const MOOD_SEARCH_TERMS = {
     nostalgic: ['nostalgic', 'retro', 'classic', 'oldies', 'memories', 'vintage', 'throwback'],
     focused: ['focused', 'concentration', 'study', 'work', 'productivity', 'instrumental', 'classical']
 };
-
-
 let currentMood = null;
 let currentSong = null;
 let audioPlayer = null;
 let searchResults = [];
-
-
+let playlist = [];
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
-    initializeAudioPlayer();
+    initializeAudioPlayer();    
+    const showPlaylistBtn = document.getElementById('showPlaylistBtn');
+    if (showPlaylistBtn) {
+        showPlaylistBtn.addEventListener('click', function() {
+            let playlistSection = document.getElementById('playlistSection');
+            if (playlistSection) {
+                playlistSection.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                showPlaylist();
+                playlistSection = document.getElementById('playlistSection');
+                if (playlistSection) {
+                    playlistSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+        });
+    }
 });
 
 
@@ -53,6 +65,8 @@ function initializeAudioPlayer() {
     audioPlayer.addEventListener('timeupdate', updatePlayerProgress);
     audioPlayer.addEventListener('ended', onSongEnd);
     audioPlayer.addEventListener('error', onPlayerError);
+    audioPlayer.addEventListener('play', updatePlayPauseButton);
+    audioPlayer.addEventListener('pause', updatePlayPauseButton);
 }
 
 async function selectMood(mood) {
@@ -80,9 +94,7 @@ async function searchMusicByMood(mood) {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
         const data = await response.json();
-        
         if (data.results && data.results.length > 0) {
             searchResults = data.results;
             searchResults = searchResults.filter(song => song.previewUrl);
@@ -119,7 +131,6 @@ async function searchMusicByQuery(query) {
 function displaySearchResults() {
     const resultsContainer = document.getElementById('searchResults');
     resultsContainer.innerHTML = '';
-    
     if (searchResults.length === 0) {
         resultsContainer.innerHTML = `
             <div class="error-message">
@@ -154,9 +165,12 @@ function createSongCard(song, index) {
             <button class="action-btn" onclick="playSong(${index})">
                 <i class="fas fa-play"></i> Play
             </button>
+            <button class="action-btn" onclick="addToPlaylist(searchResults[${index}])">
+                <i class="fas fa-plus"></i> Add to Playlist
+            </button>
         </div>
     `;
-    
+
     return card;
 }
 
@@ -167,14 +181,13 @@ function playSong(index) {
             return;
         }
 currentSong = song;
-    
     document.getElementById('albumArt').src = song.artworkUrl100 || song.artworkUrl60 || 'https://via.placeholder.com/120x120/667eea/ffffff?text=🎵';
     document.getElementById('songTitle').textContent = song.trackName || 'Unknown Song';
     document.getElementById('artistName').textContent = song.artistName || 'Unknown Artist';
     document.getElementById('albumName').textContent = song.collectionName || 'Unknown Album';
     audioPlayer.src = song.previewUrl;
     audioPlayer.load();
-    
+
     showPlayer();
     
     audioPlayer.play().catch(error => {
@@ -423,11 +436,6 @@ function updatePlayPauseButton() {
     }
 }
 
-if (audioPlayer) {
-    audioPlayer.addEventListener('play', updatePlayPauseButton);
-    audioPlayer.addEventListener('pause', updatePlayPauseButton);
-}
-
 
 function formatDuration(milliseconds) {
     if (!milliseconds) return '0:00';
@@ -440,4 +448,103 @@ function formatDuration(milliseconds) {
 function truncateText(text, maxLength = 50) {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+}
+
+function showSuccessMessage(message) {
+    const msgDiv = document.getElementById('successMessage');
+    if (msgDiv) {
+        msgDiv.textContent = message;
+        msgDiv.style.display = 'block';
+        msgDiv.style.background = '#4BB543';
+        msgDiv.style.color = '#fff';
+        msgDiv.style.padding = '10px 20px';
+        msgDiv.style.borderRadius = '5px';
+        msgDiv.style.margin = '10px auto';
+        msgDiv.style.textAlign = 'center';
+        msgDiv.style.maxWidth = '400px';
+        setTimeout(() => {
+            msgDiv.style.display = 'none';
+        }, 2000);
+    }
+}
+
+function addToPlaylist(song) {
+    if (!playlist.some(s => s.trackId === song.trackId)) {
+        playlist.push(song);
+        showPlaylist();
+        showSuccessMessage('Song added to playlist successfully!');
+    }
+}
+
+function removeFromPlaylist(index) {
+    playlist.splice(index, 1);
+    showPlaylist();
+}
+
+function playPlaylistSong(index) {
+    const song = playlist[index];
+    if (song) {
+        currentSong = song;
+        audioPlayer.src = song.previewUrl;
+        audioPlayer.load();
+        showPlayer();
+        audioPlayer.play().catch(error => {
+            alert('Unable to play this song.');
+        });
+    }
+}
+
+function showPlaylist() {
+    let playlistSection = document.getElementById('playlistSection');
+    if (!playlistSection) {
+        playlistSection = document.createElement('div');
+        playlistSection.id = 'playlistSection';
+        playlistSection.className = 'playlist-section';
+        playlistSection.innerHTML = '<h3>Playlist</h3><div id="playlistSongs" class="search-results"></div>';
+        const playerSection = document.getElementById('playerSection');
+        if (playerSection && playerSection.parentNode) {
+            playerSection.parentNode.insertBefore(playlistSection, playerSection.nextSibling);
+        } else {
+            document.body.appendChild(playlistSection);
+        }
+    }
+    const playlistSongs = playlistSection.querySelector('#playlistSongs');
+    if (playlist.length === 0) {
+        playlistSongs.innerHTML = '<p>Your playlist is empty.</p>';
+        return;
+    }
+    
+ 
+    playlistSongs.innerHTML = '';
+    
+  
+    playlist.forEach((song, index) => {
+        const card = createPlaylistSongCard(song, index);
+        playlistSongs.appendChild(card);
+    });
+}
+
+function createPlaylistSongCard(song, index) {
+    const card = document.createElement('div');
+    card.className = 'song-card';
+    const artwork = song.artworkUrl100 || song.artworkUrl60 || 'https://via.placeholder.com/60x60/667eea/ffffff?text=🎵';
+    card.innerHTML = `
+        <div class="song-header">
+            <img src="${artwork}" alt="Album Art" class="song-artwork">
+            <div class="song-details">
+                <h4>${song.trackName || 'Unknown Song'}</h4>
+                <p>${song.artistName || 'Unknown Artist'}</p>
+                <p>${song.collectionName || 'Unknown Album'}</p>
+            </div>
+        </div>
+        <div class="song-actions">
+            <button class="action-btn" onclick="playPlaylistSong(${index})">
+                <i class="fas fa-play"></i> Play
+            </button>
+            <button class="action-btn secondary" onclick="removeFromPlaylist(${index})">
+                <i class="fas fa-trash"></i> Remove
+            </button>
+        </div>
+    `;
+    return card;
 }
