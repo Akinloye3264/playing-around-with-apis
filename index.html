@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mood Music Finder</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/x-icon" href="./download.jpg">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-music"></i> Mood Music Finder</h1>
+                <p>Discover the perfect music for your mood</p>
+            </div>
+            <div class="search-bar-container">
+                <form id="songSearchForm" autocomplete="off" style="margin-top: 20px; display: flex; justify-content: center;">
+                    <input type="text" id="songSearchInput" placeholder="Search for a song or artist..." style="width: 300px; padding: 10px; border-radius: 5px 0 0 5px; border: 1px solid #ccc; font-size: 1rem;">
+                    <button type="submit" style="padding: 10px 20px; border-radius: 0 5px 5px 0; border: none; background: #667eea; color: #fff; font-size: 1rem; cursor: pointer;"><i class="fas fa-search"></i></button>
+                </form>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Mood Section -->
+            <section class="mood-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-heart"></i> How are you feeling today?</h2>
+                    <p>Select your mood to find the perfect music</p>
+                </div>
+                
+                <div class="mood-grid" id="moodGrid">
+                    <div class="mood-card" data-mood="happy">
+                        <div class="mood-icon">
+                            <i class="fas fa-laugh"></i>
+                        </div>
+                        <h3>Happy</h3>
+                        <p>Upbeat and joyful tunes</p>
+                    </div>
+                    <div class="mood-card" data-mood="sad">
+                        <div class="mood-icon">
+                            <i class="fas fa-cloud-rain"></i>
+                        </div>
+                        <h3>Sad</h3>
+                        <p>Melancholic and reflective</p>
+                    </div>
+                    <div class="mood-card" data-mood="angry">
+                        <div class="mood-icon">
+                            <i class="fas fa-fire"></i>
+                        </div>
+                        <h3>Angry</h3>
+                        <p>Intense and powerful</p>
+                    </div>
+                    <div class="mood-card" data-mood="relaxed">
+                        <div class="mood-icon">
+                            <i class="fas fa-spa"></i>
+                        </div>
+                        <h3>Relaxed</h3>
+                        <p>Calm and peaceful</p>
+                    </div>
+                    <div class="mood-card" data-mood="energetic">
+                        <div class="mood-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <h3>Energetic</h3>
+                        <p>High-energy and dynamic</p>
+                    </div>
+                    <div class="mood-card" data-mood="romantic">
+                        <div class="mood-icon">
+                            <i class="fas fa-heart"></i>
+                        </div>
+                        <h3>Romantic</h3>
+                        <p>Love and passion</p>
+                    </div>
+                    <div class="mood-card" data-mood="nostalgic">
+                        <div class="mood-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <h3>Nostalgic</h3>
+                        <p>Memories and nostalgia</p>
+                    </div>
+                    <div class="mood-card" data-mood="focused">
+                        <div class="mood-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h3>Focused</h3>
+                        <p>Concentration and productivity</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search Section -->
+            <section class="search-section" id="searchSection" style="display: none;">
+                <div class="section-header">
+                    <h2><i class="fas fa-search"></i> Search Results</h2>
+                    <p>Music for your <span id="currentMood">mood</span></p>
+                    <button class="back-btn" id="backBtn">
+                        <i class="fas fa-arrow-left"></i> Back to Moods
+                    </button>
+                </div>
+                
+                <div class="search-results" id="searchResults">
+                </div>
+            </section>
+
+            <!-- Music Player -->
+            <section class="player-section" id="playerSection" style="display: none;">
+                <div class="player-card">
+                    <div class="player-header">
+                        <h3><i class="fas fa-play-circle"></i> Now Playing</h3>
+                        <button class="close-btn" id="closePlayer">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="player-content">
+                        <div class="album-art">
+                            <img id="albumArt" src="" alt="Album Art">
+                        </div>
+                        <div class="song-info">
+                            <h4 id="songTitle">Song Title</h4>
+                            <p id="artistName">Artist Name</p>
+                            <p id="albumName">Album Name</p>
+                        </div>
+                        <div class="player-controls">
+                            <button id="playPauseBtn" class="control-btn">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <div class="time-display">
+                                    <span id="currentTime">0:00</span>
+                                    <span id="totalTime">0:00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Lyrics -->
+            <section class="lyrics-section" id="lyricsSection" style="display: none;">
+                <div class="lyrics-card">
+                    <div class="lyrics-header">
+                        <h3><i class="fas fa-music"></i> Lyrics</h3>
+                        <button class="close-btn" id="closeLyrics">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="lyrics-content">
+                        <div id="lyricsText">
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>&copy; 2025 Mood Music Finder. Powered by iTunes API.</p>
+        </footer>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Searching for music...</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
