@@ -1,6 +1,8 @@
 
 const ITUNES_API_BASE = 'https://itunes.apple.com/search';
 
+let audioContext = null;
+let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
 const MOOD_SEARCH_TERMS = {
     happy: ['happy', 'joyful', 'upbeat', 'cheerful', 'positive', 'dance', 'party'],
@@ -17,9 +19,13 @@ let currentSong = null;
 let audioPlayer = null;
 let searchResults = [];
 let playlist = [];
+let userInteracted = false;
+
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
-    initializeAudioPlayer();    
+    initializeAudioPlayer();
+    setupIOSAudioContext();
+    
     const showPlaylistBtn = document.getElementById('showPlaylistBtn');
     if (showPlaylistBtn) {
         showPlaylistBtn.addEventListener('click', function() {
@@ -36,16 +42,58 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+function setupIOSAudioContext() {
+    if (isIOS) {
+
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('AudioContext not supported');
+        }
+        
+        document.addEventListener('touchstart', function() {
+            if (!userInteracted) {
+                userInteracted = true;
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            }
+        }, { once: true });
+        
+        document.addEventListener('touchend', function() {
+            if (!userInteracted) {
+                userInteracted = true;
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            }
+        }, { once: true });
+        
+        
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && audioPlayer && !audioPlayer.paused) {
+                audioPlayer.pause();
+            }
+        });
+    }
+}
 
 
 function setupEventListeners() {
+    const eventType = isIOS ? 'touchstart' : 'click';
+    
     document.querySelectorAll('.mood-card').forEach(card => {
-        card.addEventListener('click', () => selectMood(card.dataset.mood));
+        card.addEventListener(eventType, (e) => {
+            e.preventDefault();
+            selectMood(card.dataset.mood);
+        });
     });
-    document.getElementById('backBtn').addEventListener('click', showMoodSelection);
-     document.getElementById('closePlayer').addEventListener('click', hidePlayer);
-    document.getElementById('closeLyrics').addEventListener('click', hideLyrics);
-    document.getElementById('playPauseBtn').addEventListener('click', togglePlayPause);
+    
+    document.getElementById('backBtn').addEventListener(eventType, showMoodSelection);
+    document.getElementById('closePlayer').addEventListener(eventType, hidePlayer);
+    document.getElementById('closeLyrics').addEventListener(eventType, hideLyrics);
+    document.getElementById('playPauseBtn').addEventListener(eventType, togglePlayPause);
+    
     const songSearchForm = document.getElementById('songSearchForm');
     if (songSearchForm) {
         songSearchForm.addEventListener('submit', async function(e) {
@@ -57,16 +105,37 @@ function setupEventListeners() {
             }
         });
     }
+    
+  
+    if (isIOS) {
+        document.addEventListener('touchstart', function() {
+            userInteracted = true;
+        }, { passive: true });
+    }
 }
 
 function initializeAudioPlayer() {
     audioPlayer = new Audio();
+    
+   
+    if (isIOS) {
+        audioPlayer.preload = 'metadata';
+        audioPlayer.playsInline = true;
+        audioPlayer.webkitPlaysinline = true;
+    }
+    
     audioPlayer.addEventListener('loadedmetadata', updatePlayerTime);
     audioPlayer.addEventListener('timeupdate', updatePlayerProgress);
     audioPlayer.addEventListener('ended', onSongEnd);
     audioPlayer.addEventListener('error', onPlayerError);
     audioPlayer.addEventListener('play', updatePlayPauseButton);
     audioPlayer.addEventListener('pause', updatePlayPauseButton);
+    
+    if (isIOS) {
+        audioPlayer.addEventListener('canplaythrough', function() {
+            userInteracted = true;
+        });
+    }
 }
 
 async function selectMood(mood) {
@@ -162,14 +231,30 @@ function createSongCard(song, index) {
             </div>
         </div>
         <div class="song-actions">
-            <button class="action-btn" onclick="playSong(${index})">
+            <button class="action-btn play-btn" data-index="${index}">
                 <i class="fas fa-play"></i> Play
             </button>
-            <button class="action-btn" onclick="addToPlaylist(searchResults[${index}])">
+            <button class="action-btn add-btn" data-index="${index}">
                 <i class="fas fa-plus"></i> Add to Playlist
             </button>
         </div>
     `;
+
+    // Add event listeners for iOS compatibility
+    const playBtn = card.querySelector('.play-btn');
+    const addBtn = card.querySelector('.add-btn');
+    
+    const eventType = isIOS ? 'touchstart' : 'click';
+    
+    playBtn.addEventListener(eventType, (e) => {
+        e.preventDefault();
+        playSong(parseInt(playBtn.dataset.index));
+    });
+    
+    addBtn.addEventListener(eventType, (e) => {
+        e.preventDefault();
+        addToPlaylist(searchResults[parseInt(addBtn.dataset.index)]);
+    });
 
     return card;
 }
@@ -178,27 +263,61 @@ function playSong(index) {
     const song = searchResults[index];
     if (!song || !song.previewUrl) {
         alert('Preview not available for this song');
-            return;
-        }
-currentSong = song;
+        return;
+    }
+    
+    currentSong = song;
     document.getElementById('albumArt').src = song.artworkUrl100 || song.artworkUrl60 || 'https://via.placeholder.com/120x120/667eea/ffffff?text=🎵';
     document.getElementById('songTitle').textContent = song.trackName || 'Unknown Song';
     document.getElementById('artistName').textContent = song.artistName || 'Unknown Artist';
     document.getElementById('albumName').textContent = song.collectionName || 'Unknown Album';
+    
+    // Set audio source
     audioPlayer.src = song.previewUrl;
     audioPlayer.load();
 
     showPlayer();
     
-    audioPlayer.play().catch(error => {
-        console.error('Error playing audio:', error);
-        alert('Unable to play this song. Please try another one.');
-    });
+    // iOS Safari requires user interaction before playing
+    if (isIOS && !userInteracted) {
+        // Show a message to the user
+        const playButton = document.getElementById('playPauseBtn');
+        if (playButton) {
+            playButton.innerHTML = '<i class="fas fa-play"></i>';
+            playButton.onclick = function() {
+                userInteracted = true;
+                audioPlayer.play().catch(error => {
+                    console.error('Error playing audio:', error);
+                    alert('Unable to play this song. Please try another one.');
+                });
+                // Reset the onclick
+                playButton.onclick = togglePlayPause;
+            };
+        }
+    } else {
+        audioPlayer.play().catch(error => {
+            console.error('Error playing audio:', error);
+            if (isIOS) {
+                alert('Please tap the play button to start playback on iOS.');
+            } else {
+                alert('Unable to play this song. Please try another one.');
+            }
+        });
+    }
 }
 
 function togglePlayPause() {
     if (audioPlayer.paused) {
-        audioPlayer.play();
+        // iOS Safari requires user interaction
+        if (isIOS && !userInteracted) {
+            userInteracted = true;
+        }
+        audioPlayer.play().catch(error => {
+            console.error('Error playing audio:', error);
+            if (isIOS) {
+                alert('Please tap the play button again to start playback.');
+            }
+        });
     } else {
         audioPlayer.pause();
     }
@@ -488,9 +607,32 @@ function playPlaylistSong(index) {
         audioPlayer.src = song.previewUrl;
         audioPlayer.load();
         showPlayer();
-        audioPlayer.play().catch(error => {
-            alert('Unable to play this song.');
-        });
+        
+        // iOS Safari requires user interaction before playing
+        if (isIOS && !userInteracted) {
+            const playButton = document.getElementById('playPauseBtn');
+            if (playButton) {
+                playButton.innerHTML = '<i class="fas fa-play"></i>';
+                playButton.onclick = function() {
+                    userInteracted = true;
+                    audioPlayer.play().catch(error => {
+                        console.error('Error playing audio:', error);
+                        alert('Unable to play this song.');
+                    });
+                    // Reset the onclick
+                    playButton.onclick = togglePlayPause;
+                };
+            }
+        } else {
+            audioPlayer.play().catch(error => {
+                console.error('Error playing audio:', error);
+                if (isIOS) {
+                    alert('Please tap the play button to start playback on iOS.');
+                } else {
+                    alert('Unable to play this song.');
+                }
+            });
+        }
     }
 }
 
@@ -538,13 +680,30 @@ function createPlaylistSongCard(song, index) {
             </div>
         </div>
         <div class="song-actions">
-            <button class="action-btn" onclick="playPlaylistSong(${index})">
+            <button class="action-btn playlist-play-btn" data-index="${index}">
                 <i class="fas fa-play"></i> Play
             </button>
-            <button class="action-btn secondary" onclick="removeFromPlaylist(${index})">
+            <button class="action-btn secondary playlist-remove-btn" data-index="${index}">
                 <i class="fas fa-trash"></i> Remove
             </button>
         </div>
     `;
+    
+    // Add event listeners for iOS compatibility
+    const playBtn = card.querySelector('.playlist-play-btn');
+    const removeBtn = card.querySelector('.playlist-remove-btn');
+    
+    const eventType = isIOS ? 'touchstart' : 'click';
+    
+    playBtn.addEventListener(eventType, (e) => {
+        e.preventDefault();
+        playPlaylistSong(parseInt(playBtn.dataset.index));
+    });
+    
+    removeBtn.addEventListener(eventType, (e) => {
+        e.preventDefault();
+        removeFromPlaylist(parseInt(removeBtn.dataset.index));
+    });
+    
     return card;
 }
