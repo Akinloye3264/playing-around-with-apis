@@ -1,26 +1,11 @@
-#Stage 1: Build the Vite app
-
-FROM node:18 AS builder
-
-WORKDIR /app
-
-COPY package*.json ./
-
-RUN npm install
-
-COPY . .
-
-RUN npm run build
-
-
-# Stage 2: Serve with Nginx
-
+# Use an Nginx base image
 FROM nginx:alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Remove default index page and copy your site files
+COPY . /usr/share/nginx/html
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Expose port 80
+EXPOSE 80
 
-EXPOSE 8080
-
+# Start Nginx
 CMD ["nginx", "-g", "daemon off;"]
