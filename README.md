@@ -129,6 +129,16 @@ The app handles various scenarios:
 
 ## 🐳 Docker Setup & Deployment
 
+### **Docker Hub Repository Details**
+
+- **Docker Hub URL**: `https://hub.docker.com/r/akinloye3264/playing-around-with-apis`
+- **Image Name**: `akinloye3264/playing-around-with-apis-web-01`
+- **Image Name2**: `akinloye3264/playing-around-with-apis-web-02`
+- **Tags**: 
+  - `latest` - Most recent stable version
+  - `v1.0.0` - Specific version tag
+  - `dev` - Development version
+
 ### **Step-by-Step Docker Setup Process**
 
 #### **Step 1: Clone the Repository**
@@ -162,7 +172,7 @@ CMD ["nginx", "-g", "daemon off;"]
 #### **Step 3: Build the Docker Image**
 ```bash
 # Build the image with a tag
-docker build -t mood-music-finder .
+docker build -t playing-around-with-apis .
 
 # This command:
 # - docker build: Builds a Docker image
@@ -173,7 +183,7 @@ docker build -t mood-music-finder .
 #### **Step 4: Run the Container**
 ```bash
 # Run the container
-docker run -d -p 8080:80 --name mood-music-app mood-music-finder
+docker run -d -p 8080:80 --name mood-music-app playing-around-with-apis
 
 # This command:
 # - docker run: Creates and starts a container
@@ -188,6 +198,161 @@ Open your web browser and visit:
 ```
 http://localhost:8080
 ```
+
+### **Production Deployment Instructions**
+
+#### **Web01/Web02 Deployment Commands**
+
+**On Web01:**
+```bash
+# Pull the latest image
+docker pull akinloye3264/playing-around-with-apis:latest
+
+# Stop existing container (if running)
+docker stop playing-around-with-apis-web01
+
+# Remove old container
+docker rm playing-around-with-apis-web01
+
+# Run new container with environment variables
+docker run -d \
+  --name mood-music-app-web01 \
+  -p 8081:80 \
+  -e NODE_ENV=production \
+  -e API_BASE_URL=https://itunes.apple.com \
+  --restart unless-stopped \
+  akinloye3264/playing-around-with-apis:latest
+```
+
+**On Web02:**
+```bash
+# Pull the latest image
+docker pull akinloye3264/playing-around-with-apis:latest
+
+# Stop existing container (if running)
+docker stop playing-around-with-apis-web02
+
+# Remove old container
+docker rm playing-around-with-apis-web02
+
+# Run new container with environment variables
+docker run -d \
+  --name mood-music-app-web02 \
+  -p 8082:80 \
+  -e NODE_ENV=production \
+  -e API_BASE_URL=https://itunes.apple.com \
+  --restart unless-stopped \
+  yourusername/mood-music-finder:latest
+```
+
+### **Load Balancer Configuration**
+
+#### **HAProxy Configuration**
+Create `/etc/haproxy/haproxy.cfg`:
+
+```haproxy
+global
+    daemon
+    maxconn 4096
+
+defaults
+    mode http
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+frontend http_front
+    bind *:80
+    stats uri /haproxy?stats
+    default_backend http_back
+
+backend http_back
+    balance roundrobin
+    server web01 192.168.1.10:8081 check
+    server web02 192.168.1.11:8082 check
+    option httpchk GET /
+    http-check expect status 200
+```
+
+#### **Nginx Configuration (Alternative)**
+Create `/etc/nginx/sites-available/playing-around-with-apis`:
+
+```nginx
+upstream mood_music_backend {
+    server 192.168.1.10:8081;
+    server 192.168.1.11:8082;
+}
+
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://mood_music_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### **Reload Load Balancer**
+```bash
+# For HAProxy
+sudo systemctl reload haproxy
+
+# For Nginx
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### **Testing Load Balancing**
+
+#### **Round-Robin Verification Steps**
+
+1. **Check Load Balancer Status:**
+```bash
+# HAProxy stats
+curl http://yourdomain.com/haproxy?stats
+
+# Check both servers are healthy
+curl -I http://192.168.1.10:8081
+curl -I http://192.168.1.11:8082
+```
+
+2. **Test Round-Robin Distribution:**
+```bash
+# Make multiple requests and check which server responds
+for i in {1..10}; do
+    curl -s http://yourdomain.com | grep "Server:" || echo "Request $i"
+    sleep 1
+done
+```
+
+3. **Monitor Logs:**
+```bash
+# Check HAProxy logs
+sudo tail -f /var/log/haproxy.log
+
+# Check Nginx logs
+sudo tail -f /var/log/nginx/access.log
+```
+
+4. **Load Testing:**
+```bash
+# Install Apache Bench
+sudo apt-get install apache2-utils
+
+# Run load test
+ab -n 100 -c 10 http://yourdomain.com/
+```
+
+#### **Evidence of Load Balancing**
+- **HAProxy Stats**: Show requests distributed between servers
+- **Server Logs**: Each server receives approximately 50% of requests
+- **Response Headers**: Different server IPs in responses
+- **Health Checks**: Both servers return 200 status codes
 
 ### **Alternative: Using Docker Compose**
 
@@ -220,10 +385,10 @@ docker-compose logs -f
 
 ```bash
 # Build the image
-docker build -t mood-music-finder .
+docker build -t playing-around-with-apis .
 
 # Run the container
-docker run -d -p 8080:80 --name mood-music-app mood-music-finder
+docker run -d -p 8080:80 --name mood-music-app playing-around-with-apis
 
 # Stop the container
 docker stop mood-music-app
@@ -242,6 +407,124 @@ docker exec -it mood-music-app sh
 
 # Remove the image
 docker rmi mood-music-finder
+```
+
+## 🔐 Security Hardening
+
+### **Environment Variables for Secrets**
+
+Instead of hardcoding API keys or sensitive data, use environment variables:
+
+#### **Updated Dockerfile with Environment Support**
+```dockerfile
+# Use an Nginx base image
+FROM nginx:alpine
+
+# Install Node.js for environment variable processing
+RUN apk add --no-cache nodejs npm
+
+# Copy your site files
+COPY . /usr/share/nginx/html
+
+# Create a script to replace environment variables
+RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
+    echo 'envsubst < /usr/share/nginx/html/index.html > /tmp/index.html' >> /docker-entrypoint.sh && \
+    echo 'cp /tmp/index.html /usr/share/nginx/html/index.html' >> /docker-entrypoint.sh && \
+    echo 'nginx -g "daemon off;"' >> /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
+# Expose port 80
+EXPOSE 80
+
+# Start the entrypoint script
+CMD ["/docker-entrypoint.sh"]
+```
+
+#### **Environment Variables in HTML**
+Update `index.html` to use environment variables:
+```html
+<script>
+    window.API_BASE_URL = '${API_BASE_URL}';
+    window.APP_VERSION = '${APP_VERSION}';
+</script>
+```
+
+#### **Production Deployment with Secrets**
+```bash
+# Create .env file
+cat > .env << EOF
+API_BASE_URL=https://itunes.apple.com
+APP_VERSION=v1.0.0
+NODE_ENV=production
+EOF
+
+# Run with environment file
+docker run -d \
+  --name mood-music-app \
+  -p 8080:80 \
+  --env-file .env \
+  yourusername/mood-music-finder:latest
+```
+
+#### **Docker Secrets (for Docker Swarm)**
+```bash
+# Create secret
+echo "your-secret-api-key" | docker secret create api_key -
+
+# Deploy with secrets
+docker stack deploy -c docker-compose.yml mood-music
+```
+
+#### **Kubernetes Secrets (Alternative)**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mood-music-secrets
+type: Opaque
+data:
+  api-key: <base64-encoded-api-key>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mood-music-finder
+spec:
+  template:
+    spec:
+      containers:
+      - name: mood-music
+        image: yourusername/mood-music-finder:latest
+        env:
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mood-music-secrets
+              key: api-key
+```
+
+### **Security Best Practices**
+
+1. **Never commit secrets to Git:**
+```bash
+# Add to .gitignore
+echo ".env" >> .gitignore
+echo "secrets/" >> .gitignore
+```
+
+2. **Use Docker secrets or environment files:**
+```bash
+# For development
+docker run --env-file .env.localplaying-around-with-apis
+
+# For production
+docker run --env-file .env.production playing-around-with-apis
+```
+
+3. **Rotate secrets regularly:**
+```bash
+# Update secrets
+docker secret update api_key new-api-key-value
 ```
 
 ## 🚀 Local Development Setup
@@ -351,6 +634,11 @@ The application adapts to different screen sizes:
    - Check port availability
    - Verify image build success
 
+4. **Load Balancer Issues**
+   - Check server health status
+   - Verify configuration syntax
+   - Monitor logs for errors
+
 ### **Debug Commands**
 ```bash
 # Check Docker container status
@@ -364,6 +652,13 @@ F12 → Console tab
 
 # Test API directly
 curl "https://itunes.apple.com/search?term=happy&media=music&entity=song&limit=1"
+
+# Test load balancer
+curl -I http://yourdomain.com
+
+# Check server health
+curl -I http://192.168.1.10:8081
+curl -I http://192.168.1.11:8082
 ```
 
 ## 🔮 Future Enhancements
@@ -402,10 +697,10 @@ For support and questions:
 
 ---
 
-**Note**: This application uses the iTunes Search API to provide real music data. Preview audio is streamed directly from Apple's servers. The application includes comprehensive fallback data for offline functionality. and there is also a restriction on Ios devices. 
+**Note**: This application uses the iTunes Search API to provide real music data. Preview audio is streamed directly from Apple's servers. The application includes comprehensive fallback data for offline functionality. Which adds restiction on IOS devices.
 
 Below is my video recording demonstrating how my website works briefly.
-https://screenapp.io/app/#/shared/gx1y-1IAJf
+https://screenapp.io/app/#/shared/gx1y-1IAJf 
 
 
 
