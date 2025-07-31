@@ -1,18 +1,26 @@
-# Use official Nginx image as base
+#Stage 1: Build the Vite app
+
+FROM node:18 AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+
+# Stage 2: Serve with Nginx
+
 FROM nginx:alpine
 
-# Set a label and version tag (optional)
-LABEL maintainer="yourname@example.com"
-LABEL version="1.0"
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Remove default nginx static assets
-RUN rm -rf /usr/share/nginx/html/*
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy your static site (HTML, CSS, JS) to Nginx web directory
-COPY . /usr/share/nginx/html
-
-# Expose port 8080 instead of 80
 EXPOSE 8080
 
-# Override default command to run nginx on port 8080
 CMD ["nginx", "-g", "daemon off;"]

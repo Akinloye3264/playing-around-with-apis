@@ -101,8 +101,8 @@ async function searchMusicByMood(mood) {
         }
         const data = await response.json();
         if (data.results && data.results.length > 0) {
-            searchResults = data.results;
-            searchResults = searchResults.filter(song => song.previewUrl);
+            searchResults = data.results.filter(song => song.previewUrl);
+            searchResults = searchResults.map(song => ({ ...song, mood }));
         } else {
             throw new Error('No songs found');
         }
@@ -110,6 +110,7 @@ async function searchMusicByMood(mood) {
     } catch (error) {
         console.error('Error fetching from iTunes API:', error);
         searchResults = generateSampleSongs(mood);
+        searchResults = searchResults.map(song => ({ ...song, mood }));
     }
 }
 
@@ -121,6 +122,7 @@ async function searchMusicByQuery(query) {
         const data = await response.json();
         if (data.results && data.results.length > 0) {
             searchResults = data.results.filter(song => song.previewUrl);
+            searchResults = searchResults.map(song => ({ ...song, mood: currentMood || 'unknown' }));
         } else {
             throw new Error('No songs found');
         }
@@ -133,7 +135,7 @@ async function searchMusicByQuery(query) {
     }
 }
 
-function displaySearchResults() {
+function displaySearchResults(isMoodPage = false) {
     const resultsContainer = document.getElementById('searchResults');
     resultsContainer.innerHTML = '';
     if (searchResults.length === 0) {
@@ -147,12 +149,12 @@ function displaySearchResults() {
     }
     
     searchResults.forEach((song, index) => {
-        const card = createSongCard(song, index);
+        const card = createSongCard(song, index, isMoodPage);
         resultsContainer.appendChild(card);
     });
 }
 
-function createSongCard(song, index) {
+function createSongCard(song, index, isMoodPage = false) {
     const card = document.createElement('div');
     card.className = 'song-card';
     const artwork = song.artworkUrl100 || song.artworkUrl60 || 'https://via.placeholder.com/60x60/667eea/ffffff?text=🎵';
@@ -172,6 +174,7 @@ function createSongCard(song, index) {
             <button class="action-btn add-btn" data-index="${index}">
                 <i class="fas fa-plus"></i> Add to Playlist
             </button>
+            ${(song.mood && song.mood !== 'unknown') ? `<span class="song-mood-badge" style="margin-left: 10px; font-weight: bold; background: #e0e7ff; color: #3730a3; border-radius: 12px; padding: 2px 10px; font-size: 0.95em; display: inline-block; vertical-align: middle;">${song.mood.charAt(0).toUpperCase() + song.mood.slice(1)}</span>` : ''}
         </div>
     `;
 
