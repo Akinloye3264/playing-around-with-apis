@@ -1,0 +1,20 @@
+{
+  "name": "playing-around-with-apis",
+  "version": "1.0.0",
+  "description": "A modern, interactive music discovery application that helps you find the perfect music based on your current mood. Using the iTunes API, this app searches for songs that match your emotional state and provides a complete music listening experience.",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Akinloye3264/playing-around-with-apis.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Akinloye3264/playing-around-with-apis/issues"
+  },
+  "homepage": "https://github.com/Akinloye3264/playing-around-with-apis#readme"
+}

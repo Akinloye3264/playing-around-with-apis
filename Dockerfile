@@ -1,11 +1,7 @@
-# Use an Nginx base image
+
+#dockerfile.web
 FROM nginx:alpine
-
-# Remove default index page and copy your site files
-COPY . /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+COPY index.html /usr/share/nginx/html/index.html
+COPY style.css /usr/share/nginx/html/style.css
+COPY script.js /usr/share/nginx/html/script.js
+COPY nginx.conf /etc/nginx/conf.d/default.conf
