@@ -27,7 +27,7 @@ A modern, interactive music discovery application that helps you find the perfec
 - **Styling**: Custom CSS with modern design patterns
 - **Icons**: Font Awesome
 - **Fonts**: Inter (Google Fonts)
-- **Containerization**: Docker with Nginx
+- **Containerization**: Docker with Nginx and HAProxy Load Balancer
 
 ## 📁 Project Structure
 
@@ -37,8 +37,428 @@ playing-around-with-apis/
 ├── style.css           # CSS styles and animations
 ├── script.js           # JavaScript functionality
 ├── download.jpg        # Favicon image
-├── Dockerfile          # Docker configuration
+├── Dockerfile          # Web server Docker configuration
+├── Dockerfile.lb       # Load balancer Docker configuration
+├── haproxy.cfg         # HAProxy configuration
+├── nginx.conf          # Nginx configuration
+├── docker-compose.yml  # Docker Compose configuration
 └── README.md           # This file
+```
+
+## 🐳 Docker Setup & Deployment
+
+### **Complete Setup Process**
+
+This project uses a multi-container Docker setup with load balancing:
+
+- **Web Servers**: Two Nginx containers serving the application
+- **Load Balancer**: HAProxy container distributing traffic
+- **Network**: Custom Docker network for container communication
+
+### **Step-by-Step Setup Instructions**
+
+#### **Step 1: Environment Preparation**
+```bash
+# Update system packages
+sudo apt update
+sudo apt upgrade
+
+# Install Docker (if not already installed)
+sudo apt install docker.io
+
+# Start Docker service
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# Add user to docker group (optional)
+sudo usermod -aG docker $USER
+```
+
+#### **Step 2: Clone and Navigate to Project**
+```bash
+# Clone the repository
+git clone https://github.com/Akinloye3264/playing-around-with-apis.git
+
+# Navigate to project directory
+cd playing-around-with-apis/
+
+# Verify files are present
+ls
+```
+
+#### **Step 3: Create Docker Network**
+```bash
+# Create a custom network for container communication
+docker network create emmynet
+```
+
+#### **Step 4: Build Web Server Images**
+```bash
+# Build web-01 image
+sudo docker build -f Dockerfile -t web-01 .
+
+# Build web-02 image (same configuration, different tag)
+sudo docker build -f Dockerfile -t web-02 .
+```
+
+#### **Step 5: Build Load Balancer Image**
+```bash
+# Build the HAProxy load balancer image
+sudo docker build -f Dockerfile.lb -t lb-01 .
+```
+
+#### **Step 6: Run Web Server Containers**
+```bash
+# Run web-01 container
+docker run -d --name web-01 --network emmynet web-01
+
+# Run web-02 container
+docker run -d --name web-02 --network emmynet web-02
+```
+
+#### **Step 7: Run Load Balancer Container**
+```bash
+# Run the load balancer container
+docker run -d --name lb-01 -p 8080:80 --network emmynet lb-01
+```
+
+#### **Step 8: Test the Setup**
+```bash
+# Check if containers are running
+docker ps
+
+# Test the load balancer
+curl localhost:8080
+
+# Test with verbose output
+curl -v localhost:8080
+
+# Check load balancer logs
+docker logs lb-01
+```
+
+### **Docker Compose Alternative**
+
+For easier management, you can use Docker Compose:
+
+#### **docker-compose.yml Configuration**
+```yaml
+version: '3.8'
+services:
+  web-01:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: web-01
+    networks:
+      - emmynet
+    restart: unless-stopped
+
+  web-02:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: web-02
+    networks:
+      - emmynet
+    restart: unless-stopped
+
+  lb-01:
+    build:
+      context: .
+      dockerfile: Dockerfile.lb
+    container_name: lb-01
+    ports:
+      - "8080:80"
+    networks:
+      - emmynet
+    depends_on:
+      - web-01
+      - web-02
+    restart: unless-stopped
+
+networks:
+  emmynet:
+    driver: bridge
+```
+
+#### **Docker Compose Commands**
+```bash
+# Start all services
+docker compose up --build
+
+# Start in detached mode
+docker compose up -d --build
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f
+
+# Rebuild and restart
+docker compose up --build --force-recreate
+```
+
+### **Configuration Files**
+
+#### **Dockerfile (Web Server)**
+```dockerfile
+# Use Nginx Alpine image
+FROM nginx:alpine
+
+# Copy application files
+COPY . /usr/share/nginx/html/
+
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+#### **Dockerfile.lb (Load Balancer)**
+```dockerfile
+# Use HAProxy Alpine image
+FROM haproxy:alpine
+
+# Copy HAProxy configuration
+COPY haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
+
+# Expose port 80
+EXPOSE 80
+
+# Start HAProxy
+CMD ["haproxy", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+```
+
+#### **haproxy.cfg**
+```haproxy
+global
+    daemon
+    maxconn 4096
+
+defaults
+    mode http
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+frontend http_front
+    bind *:80
+    stats uri /haproxy?stats
+    default_backend http_back
+
+backend http_back
+    balance roundrobin
+    server web01 web-01:80 check
+    server web02 web-02:80 check
+    option httpchk GET /
+    http-check expect status 200
+```
+
+#### **nginx.conf**
+```nginx
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    server {
+        listen       80;
+        server_name  localhost;
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+}
+```
+
+### **Docker Hub Integration**
+
+#### **Push to Docker Hub**
+```bash
+# Login to Docker Hub
+docker login
+
+# Tag images for Docker Hub
+docker tag web-01 akinloye3264/web-01:v1
+docker tag web-02 akinloye3264/web-02:v1
+docker tag lb-01 akinloye3264/lb-01:v1
+
+# Push images to Docker Hub
+docker push akinloye3264/web-01:v1
+docker push akinloye3264/web-02:v1
+docker push akinloye3264/lb-01:v1
+```
+
+#### **Pull from Docker Hub**
+```bash
+# Pull images from Docker Hub
+docker pull akinloye3264/web-01:v1
+docker pull akinloye3264/web-02:v1
+docker pull akinloye3264/lb-01:v1
+```
+
+### **Management Commands**
+
+#### **Container Management**
+```bash
+# List running containers
+docker ps
+
+# List all containers (including stopped)
+docker ps -a
+
+# Stop containers
+docker stop web-01 web-02 lb-01
+
+# Remove containers
+docker rm web-01 web-02 lb-01
+
+# Remove all containers
+docker rm -f $(docker ps -aq)
+
+# View container logs
+docker logs lb-01
+docker logs web-01
+docker logs web-02
+```
+
+#### **Image Management**
+```bash
+# List images
+docker images
+
+# Remove images
+docker rmi web-01 web-02 lb-01
+
+# Remove all images
+docker rmi -f $(docker images -q)
+```
+
+#### **Network Management**
+```bash
+# List networks
+docker network ls
+
+# Inspect network
+docker network inspect emmynet
+
+# Remove network
+docker network rm emmynet
+```
+
+### **Troubleshooting**
+
+#### **Common Issues and Solutions**
+
+1. **Port Already in Use**
+```bash
+# Check what's using port 8080
+sudo netstat -tulpn | grep :8080
+
+# Kill process using the port
+sudo kill -9 <PID>
+```
+
+2. **Container Won't Start**
+```bash
+# Check container logs
+docker logs <container-name>
+
+# Check if image exists
+docker images
+
+# Rebuild image
+docker build -f Dockerfile -t web-01 .
+```
+
+3. **Network Issues**
+```bash
+# Check network connectivity
+docker network inspect emmynet
+
+# Recreate network
+docker network rm emmynet
+docker network create emmynet
+```
+
+4. **Load Balancer Not Working**
+```bash
+# Check HAProxy configuration
+docker exec lb-01 cat /usr/local/etc/haproxy/haproxy.cfg
+
+# Test individual web servers
+curl http://web-01:80
+curl http://web-02:80
+```
+
+#### **Testing Load Balancing**
+```bash
+# Test round-robin distribution
+for i in {1..10}; do
+    curl -s http://localhost:8080 | grep "Server:" || echo "Request $i"
+    sleep 1
+done
+
+# Check HAProxy stats
+curl http://localhost:8080/haproxy?stats
+```
+
+### **Production Deployment**
+
+#### **Environment Variables**
+```bash
+# Create environment file
+cat > .env << EOF
+NODE_ENV=production
+API_BASE_URL=https://itunes.apple.com
+EOF
+
+# Run with environment variables
+docker run -d \
+  --name web-01 \
+  --network emmynet \
+  --env-file .env \
+  web-01
+```
+
+#### **Health Checks**
+```bash
+# Test application health
+curl -I http://localhost:8080
+
+# Check container health
+docker ps --format "table {{.Names}}\t{{.Status}}"
+```
+
+#### **Monitoring**
+```bash
+# Monitor resource usage
+docker stats
+
+# Monitor logs in real-time
+docker logs -f lb-01
+
+# Check HAProxy statistics
+curl http://localhost:8080/haproxy?stats
 ```
 
 ## 🎯 How Your Website Works - Step by Step
@@ -126,288 +546,6 @@ The app handles various scenarios:
 - **Audio Errors**: Shows error messages
 - **Network Issues**: Graceful degradation
 - **Missing Previews**: Alerts user
-
-## 🐳 Docker Setup & Deployment
-
-### **Docker Hub Repository Details**
-
-- **Docker Hub URL**: `https://hub.docker.com/r/akinloye3264/playing-around-with-apis`
-- **Image Name**: `akinloye3264/playing-around-with-apis-web-01`
-- **Image Name2**: `akinloye3264/playing-around-with-apis-web-02`
-- **Tags**: 
-  - `latest` - Most recent stable version
-  - `v1.0.0` - Specific version tag
-  - `dev` - Development version
-
-### **Step-by-Step Docker Setup Process**
-
-#### **Step 1: Clone the Repository**
-```bash
-git clone <your-repository-url>
-cd playing-around-with-apis
-```
-
-#### **Step 2: Understanding the Dockerfile**
-The `Dockerfile` contains:
-```dockerfile
-# Use an Nginx base image
-FROM nginx:alpine
-
-# Remove default index page and copy your site files
-COPY . /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-**What this does:**
-- Uses lightweight Alpine Linux Nginx image
-- Copies all project files to Nginx's web directory
-- Exposes port 80 for web traffic
-- Starts Nginx in foreground mode
-
-#### **Step 3: Build the Docker Image**
-```bash
-# Build the image with a tag
-docker build -t playing-around-with-apis .
-
-# This command:
-# - docker build: Builds a Docker image
-# - -t mood-music-finder: Tags the image with a name
-# - .: Uses the current directory (where Dockerfile is located)
-```
-
-#### **Step 4: Run the Container**
-```bash
-# Run the container
-docker run -d -p 8080:80 --name mood-music-app playing-around-with-apis
-
-# This command:
-# - docker run: Creates and starts a container
-# - -d: Runs in detached mode (background)
-# - -p 8080:80: Maps host port 8080 to container port 80
-# - --name mood-music-app: Names the container
-# - mood-music-finder: Uses the image we built
-```
-
-#### **Step 5: Access the Application**
-Open your web browser and visit:
-```
-http://localhost:8080
-```
-
-### **Production Deployment Instructions**
-
-#### **Web01/Web02 Deployment Commands**
-
-**On Web01:**
-```bash
-# Pull the latest image
-docker pull akinloye3264/playing-around-with-apis:latest
-
-# Stop existing container (if running)
-docker stop playing-around-with-apis-web01
-
-# Remove old container
-docker rm playing-around-with-apis-web01
-
-# Run new container with environment variables
-docker run -d \
-  --name mood-music-app-web01 \
-  -p 8081:80 \
-  -e NODE_ENV=production \
-  -e API_BASE_URL=https://itunes.apple.com \
-  --restart unless-stopped \
-  akinloye3264/playing-around-with-apis:latest
-```
-
-**On Web02:**
-```bash
-# Pull the latest image
-docker pull akinloye3264/playing-around-with-apis:latest
-
-# Stop existing container (if running)
-docker stop playing-around-with-apis-web02
-
-# Remove old container
-docker rm playing-around-with-apis-web02
-
-# Run new container with environment variables
-docker run -d \
-  --name mood-music-app-web02 \
-  -p 8082:80 \
-  -e NODE_ENV=production \
-  -e API_BASE_URL=https://itunes.apple.com \
-  --restart unless-stopped \
-  yourusername/mood-music-finder:latest
-```
-
-### **Load Balancer Configuration**
-
-#### **HAProxy Configuration**
-Create `/etc/haproxy/haproxy.cfg`:
-
-```haproxy
-global
-    daemon
-    maxconn 4096
-
-defaults
-    mode http
-    timeout connect 5000ms
-    timeout client 50000ms
-    timeout server 50000ms
-
-frontend http_front
-    bind *:80
-    stats uri /haproxy?stats
-    default_backend http_back
-
-backend http_back
-    balance roundrobin
-    server web01 192.168.1.10:8081 check
-    server web02 192.168.1.11:8082 check
-    option httpchk GET /
-    http-check expect status 200
-```
-
-#### **Nginx Configuration (Alternative)**
-Create `/etc/nginx/sites-available/playing-around-with-apis`:
-
-```nginx
-upstream mood_music_backend {
-    server 192.168.1.10:8081;
-    server 192.168.1.11:8082;
-}
-
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    location / {
-        proxy_pass http://mood_music_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-#### **Reload Load Balancer**
-```bash
-# For HAProxy
-sudo systemctl reload haproxy
-
-# For Nginx
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### **Testing Load Balancing**
-
-#### **Round-Robin Verification Steps**
-
-1. **Check Load Balancer Status:**
-```bash
-# HAProxy stats
-curl http://yourdomain.com/haproxy?stats
-
-# Check both servers are healthy
-curl -I http://192.168.1.10:8081
-curl -I http://192.168.1.11:8082
-```
-
-2. **Test Round-Robin Distribution:**
-```bash
-# Make multiple requests and check which server responds
-for i in {1..10}; do
-    curl -s http://yourdomain.com | grep "Server:" || echo "Request $i"
-    sleep 1
-done
-```
-
-3. **Monitor Logs:**
-```bash
-# Check HAProxy logs
-sudo tail -f /var/log/haproxy.log
-
-# Check Nginx logs
-sudo tail -f /var/log/nginx/access.log
-```
-
-4. **Load Testing:**
-```bash
-# Install Apache Bench
-sudo apt-get install apache2-utils
-
-# Run load test
-ab -n 100 -c 10 http://yourdomain.com/
-```
-
-#### **Evidence of Load Balancing**
-- **HAProxy Stats**: Show requests distributed between servers
-- **Server Logs**: Each server receives approximately 50% of requests
-- **Response Headers**: Different server IPs in responses
-- **Health Checks**: Both servers return 200 status codes
-
-### **Alternative: Using Docker Compose**
-
-Create a `docker-compose.yml` file:
-
-```yaml
-version: '3.8'
-services:
-  mood-music-finder:
-    build: .
-    ports:
-      - "8080:80"
-    container_name: mood-music-app
-    restart: unless-stopped
-```
-
-Then run:
-```bash
-# Start the application
-docker-compose up -d
-
-# Stop the application
-docker-compose down
-
-# View logs
-docker-compose logs -f
-```
-
-### **Docker Commands Reference**
-
-```bash
-# Build the image
-docker build -t playing-around-with-apis .
-
-# Run the container
-docker run -d -p 8080:80 --name mood-music-app playing-around-with-apis
-
-# Stop the container
-docker stop mood-music-app
-
-# Remove the container
-docker rm mood-music-app
-
-# View running containers
-docker ps
-
-# View container logs
-docker logs mood-music-app
-
-# Access container shell
-docker exec -it mood-music-app sh
-
-# Remove the image
-docker rmi mood-music-finder
-```
 
 ## 🔐 Security Hardening
 
@@ -515,7 +653,7 @@ echo "secrets/" >> .gitignore
 2. **Use Docker secrets or environment files:**
 ```bash
 # For development
-docker run --env-file .env.localplaying-around-with-apis
+docker run --env-file .env.local playing-around-with-apis
 
 # For production
 docker run --env-file .env.production playing-around-with-apis
@@ -654,11 +792,11 @@ F12 → Console tab
 curl "https://itunes.apple.com/search?term=happy&media=music&entity=song&limit=1"
 
 # Test load balancer
-curl -I http://yourdomain.com
+curl -I http://localhost:8080
 
 # Check server health
-curl -I http://192.168.1.10:8081
-curl -I http://192.168.1.11:8082
+curl -I http://web-01:80
+curl -I http://web-02:80
 ```
 
 ## 🔮 Future Enhancements
@@ -697,7 +835,7 @@ For support and questions:
 
 ---
 
-**Note**: This application uses the iTunes Search API to provide real music data. Preview audio is streamed directly from Apple's servers. The application includes comprehensive fallback data for offline functionality. Which adds restiction on IOS devices.
+**Note**: This application uses the iTunes Search API to provide real music data. Preview audio is streamed directly from Apple's servers. The application includes comprehensive fallback data for offline functionality. Which adds restriction on iOS devices.
 
 Below is my video recording demonstrating how my website works briefly.
 https://screenapp.io/app/#/shared/gx1y-1IAJf 
